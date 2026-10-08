@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Front End Docket</title>
+<meta name="description" content="Shared, live attendance sheet for film shoots: crew, in/out times, signatures and headcount that every device sees at once.">
+<meta name="theme-color" content="#2b3fa6">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Docket">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="loading" id="loading">Opening the docket&hellip;</div>
+
+<main class="auth" id="authScreen" hidden>
+  <form class="panel authbox" id="authForm">
+    <div class="stamp">Front End Docket</div>
+    <h1>Sign in</h1>
+    <p class="hint">Use the email and password for your account. New here? Create an account, then ask an editor to give you edit access.</p>
+    <label class="fld"><span>Email</span><input type="email" id="au-email" autocomplete="email" required></label>
+    <label class="fld"><span>Password</span><input type="password" id="au-pass" autocomplete="current-password" minlength="6" required></label>
+    <div class="authmsg" id="authMsg" role="status"></div>
+    <div class="authbtns">
+      <button class="btn" type="submit" id="au-in">Sign in</button>
+      <button class="btn ghost" type="button" id="au-up">Create account</button>
+    </div>
+  </form>
+</main>
+
+<main class="auth" id="pendingScreen" hidden>
+  <section class="panel authbox">
+    <div class="stamp">Waiting for approval</div>
+    <h1>Almost there</h1>
+    <p>Your account has been created. An editor has to approve it before you can see the docket.</p>
+    <p class="hint" id="pendingWho"></p>
+    <div class="authbtns">
+      <button class="btn" type="button" id="pendingCheck">Check again</button>
+      <button class="btn ghost" type="button" id="pendingOut">Sign out</button>
+    </div>
+    <div class="authmsg" id="pendingMsg" role="status"></div>
+  </section>
+</main>
+
+<div class="sheet" id="appScreen" hidden>
+  <div class="top">
+    <div>
+      <h1>Front End Docket</h1>
+      <div class="sub">Shoot review sheet &middot; Attendance report</div>
+    </div>
+    <div class="userbar">
+      <span class="conn" id="conn"><i class="dot" id="connDot"></i><span id="connTxt"></span></span>
+      <span class="who" id="whoTxt"></span>
+      <span class="pill" id="roleTxt"></span>
+      <button class="btn ghost sm" type="button" id="signOut">Sign out</button>
+    </div>
+  </div>
+
+  <div class="notice" id="notice" hidden>
+    <span id="noticeTxt"></span>
+    <button class="btn ghost sm" id="clearSample" type="button">Clear sample rows</button>
+  </div>
+  <div class="notice err" id="errBar" hidden role="alert"><span id="errTxt"></span><button class="btn ghost sm" type="button" id="errClose">Dismiss</button></div>
+
+  <section class="panel dayrow" aria-label="Choose the day">
+    <label class="fld"><span>Sheet for</span><select id="shootSel"></select></label>
+    <label class="fld"><span>Open another date</span><input type="date" id="openDate"></label>
+    <button class="btn" type="button" id="openDateBtn">Open day</button>
+  </section>
+
+  <section class="panel meta" aria-label="Shoot details">
+    <label class="fld"><span>Date of shoot</span><input type="date" id="m-date" data-m="date" disabled></label>
+    <label class="fld wide"><span>Movie / Show</span><input type="text" id="m-show" data-m="show" placeholder="Title of the production"></label>
+    <label class="fld wide"><span>Location</span><input type="text" id="m-loc" data-m="loc" placeholder="Where the unit is shooting"></label>
+    <div class="fld">
+      <span>Scheduled shift</span>
+      <div class="pair"><input type="time" id="m-sf" data-m="schedFrom" aria-label="Scheduled from"><input type="time" id="m-st" data-m="schedTo" aria-label="Scheduled to"></div>
+    </div>
+    <div class="fld">
+      <span>Actual shift</span>
+      <div class="pair"><input type="time" id="m-af" data-m="actFrom" aria-label="Actual from"><input type="time" id="m-at" data-m="actTo" aria-label="Actual to"></div>
+    </div>
+  </section>
+
+  <section class="panel counts" aria-label="Crew count">
+    <div class="stats" id="stats"></div>
+    <div class="depts" id="depts"></div>
+  </section>
+
+  <form class="panel addbar" id="addForm" autocomplete="off">
+    <label class="fld"><span>Name</span><input type="text" id="a-name" list="crewlist" placeholder="Type or pick from crew list" required></label>
+    <label class="fld"><span>Department / Designation</span><input type="text" id="a-desig" list="desiglist" placeholder="e.g. SPOT BOY" required></label>
+    <label class="fld card"><span>Card no.</span><input type="text" id="a-card" placeholder="Optional"></label>
+    <button class="btn" type="submit">Add to sheet</button>
+  </form>
+  <datalist id="crewlist"></datalist>
+  <datalist id="desiglist"></datalist>
+
+  <section class="panel" aria-label="Attendance register">
+    <div class="reg-head">
+      <h2>Attendance register</h2>
+      <div class="reg-actions">
+        <span class="toast" id="toast" role="status"></span>
+        <button class="btn ghost sm" id="copyTsv" type="button">Copy for Excel</button>
+        <button class="btn ghost sm" id="dlCsv" type="button">Download CSV</button>
+        <button class="btn sm" id="printBtn" type="button">Print / Save PDF</button>
+      </div>
+    </div>
+    <div class="cols" aria-hidden="true">
+      <span>Sr.</span><span>Name</span><span>Designation</span><span>Card no.</span><span>Time in</span><span>Sign</span><span>Time out</span><span>Sign</span><span>Amount</span><span></span>
+    </div>
+    <div class="rows" id="rows"></div>
+  </section>
+
+  <section class="panel foot" aria-label="Team signatures">
+    <div class="sigbox">
+      <span class="lbl">Production team signature</span>
+      <button type="button" class="sigarea" id="sig-prod" data-foot="prod">Tap to sign</button>
+      <button type="button" class="clear" data-footclear="prod" hidden>Clear signature</button>
+    </div>
+    <div class="sigbox">
+      <span class="lbl">SAGE team signature</span>
+      <button type="button" class="sigarea" id="sig-sage" data-foot="sage">Tap to sign</button>
+      <button type="button" class="clear" data-footclear="sage" hidden>Clear signature</button>
+    </div>
+  </section>
+
+  <details class="panel team" id="teamBox" hidden>
+    <summary id="teamSum">Team access</summary>
+    <div class="teamlist" id="teamList"></div>
+    <p class="hint">Editors can add and change entries. Viewers can only look. New accounts wait as Pending until you approve them.</p>
+  </details>
+
+  <p class="hint" id="footHint"></p>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="box" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 id="modalTitle">Sign here</h2>
+    <canvas id="pad"></canvas>
+    <div class="btns">
+      <button class="btn ghost" type="button" id="padClear">Clear</button>
+      <button class="btn ghost" type="button" id="padCancel">Cancel</button>
+      <button class="btn" type="button" id="padSave">Save signature</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="supabase-js.js"></script>
+<script src="store.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

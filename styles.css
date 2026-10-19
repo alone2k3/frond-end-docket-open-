@@ -1,30 +1,21 @@
 /* Layout: one working sheet. Shoot header on top, live headcount strip, then the attendance register
    (a table on desktop, stacked cards on a phone), then the two signature boxes the paper form ends with. */
 :root {
-  --bg: #eef0f4;
-  --surface: #ffffff;
-  --ink: #18212f;
-  --muted: #5d6779;
-  --rule: #d3d8e2;
-  --accent: #2b3fa6;      /* ballpoint blue, the pen colour used on the paper sheet */
-  --accent-ink: #ffffff;
-  --good: #1f7a4d;
-  --warn: #a35f00;
-  --stamp: #b3261e;       /* the red FRONT END DOCKET stamp */
-  --soft: #e6e9f1;
+  /* Turmeric theme: black with gold, sampled from the logo (gold glitter #C6A64C, deep #BD8E33, highlight #EAEA9A) */
+  --bg: #000000;
+  --surface: #0f0d08;
+  --ink: #f4ecd6;
+  --muted: #a89a6c;
+  --rule: #302a16;
+  --accent: #d2ac4c;
+  --accent-ink: #0a0803;
+  --gold-hi: #eada94;
+  --good: #7ed7a0;
+  --warn: #f0a257;
+  --stamp: #ff8a7d;
+  --soft: #1a160b;
   --f-display: "Barlow Condensed", "Arial Narrow", sans-serif;
   --f-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #11151c; --surface: #1a202b; --ink: #e7eaf1; --muted: #98a2b5; --rule: #2d3544;
-    --accent: #8ea2ff; --accent-ink: #0f1530; --good: #5fcf9a; --warn: #f0b14f; --stamp: #ff8077; --soft: #232b39;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #11151c; --surface: #1a202b; --ink: #e7eaf1; --muted: #98a2b5; --rule: #2d3544;
-  --accent: #8ea2ff; --accent-ink: #0f1530; --good: #5fcf9a; --warn: #f0b14f; --stamp: #ff8077; --soft: #232b39;
   color-scheme: dark;
 }
 
@@ -40,9 +31,9 @@ button, input, select { font: inherit; color: inherit; }
 
 /* top bar */
 .top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px; }
-.top h1 { font-size: 32px; line-height: 1; }
+.top h1 { font-size: 32px; line-height: 1; color: var(--accent); }
 .top .sub { color: var(--muted); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
-.stamp { font-family: var(--f-display); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--stamp); border: 2px solid var(--stamp); padding: 2px 10px; border-radius: 3px; transform: rotate(-2deg); font-size: 15px; }
+.stamp { font-family: var(--f-display); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); border: 2px solid var(--accent); padding: 2px 10px; border-radius: 3px; transform: rotate(-2deg); font-size: 15px; }
 
 .panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
 
@@ -78,12 +69,13 @@ input::placeholder { color: var(--muted); opacity: 0.8; }
 .addbar .fld { flex: 1 1 180px; }
 .addbar .fld.card { flex: 0 1 130px; }
 .btn { background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); border-radius: 4px; padding: 8px 16px; min-height: 40px; font-weight: 600; cursor: pointer; }
-.btn.ghost { background: transparent; color: var(--accent); }
+.btn.ghost { background: transparent; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 .btn.sm { min-height: 34px; padding: 4px 10px; font-size: 13px; }
 .btn:hover { filter: brightness(1.08); }
 
-.notice { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; padding: 10px 16px; border: 1px dashed var(--stamp); border-radius: 6px; color: var(--ink); font-size: 14px; }
-.notice b { color: var(--stamp); }
+.notice { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; padding: 10px 16px; border: 1px dashed var(--accent); border-radius: 6px; color: var(--ink); font-size: 14px; }
+.notice b { color: var(--accent); }
+.notice.err b, .notice.err { --accent: var(--stamp); }
 
 /* register */
 .reg-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 12px 16px; border-bottom: 1px solid var(--rule); }
@@ -230,7 +222,7 @@ input:disabled, select:disabled { opacity: 0.75; cursor: not-allowed; }
   .nav { flex-direction: column; overflow: visible; }
   .navh { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); padding: 2px 4px 4px; }
   .navb { white-space: normal; border-left-width: 4px; }
-  .navb[aria-current="page"] { border-left-color: var(--stamp); }
+  .navb[aria-current="page"] { border-left-color: var(--gold-hi); }
 }
 
 /* ---- report tables (vehicle, camera, picture vehicle, vanity van, generator) ---- */

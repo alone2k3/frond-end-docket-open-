@@ -25,7 +25,7 @@
   if (!CLIENT) { CLIENT = uuid(); jset('docket-client', CLIENT); }
 
   /* app field name -> database column */
-  var SHOOT_MAP = { date: 'shoot_date', show: 'show', loc: 'location', schedFrom: 'sched_from', schedTo: 'sched_to', actFrom: 'act_from', actTo: 'act_to', sigProd: 'sig_prod', sigSage: 'sig_sage' };
+  var SHOOT_MAP = { date: 'shoot_date', show: 'show', loc: 'location', schedFrom: 'sched_from', schedTo: 'sched_to', actFrom: 'act_from', actTo: 'act_to', sigProd: 'sig_prod', sigSage: 'sig_sage', sigs: 'sigs' };
   var ROW_MAP = { name: 'name', desig: 'desig', card: 'card', tin: 'time_in', tout: 'time_out', sin: 'sign_in', sout: 'sign_out', amt: 'amount' };
 
   function toDb(map, obj) {
@@ -51,6 +51,24 @@
     if (rec.shoot_id) o.shootId = rec.shoot_id;
     return o;
   }
+  /* report rows: one table for the Vehicle, Camera, Picture Vehicle and Vanity Van / Generator reports */
+  function rrToDb(r) {
+    var o = {};
+    if (r.report !== undefined) o.report = r.report;
+    if (r.grp !== undefined) o.grp = r.grp || '';
+    if (r.d !== undefined) o.data = r.d;
+    return o;
+  }
+  function rrFromDb(rec) {
+    var o = {};
+    if (rec.id) o.id = rec.id;
+    if (rec.report !== undefined) o.report = rec.report;
+    if (rec.grp !== undefined) o.grp = rec.grp || '';
+    if (rec.data !== undefined) o.d = rec.data || {};
+    if (rec.created_at) o.created = rec.created_at;
+    if (rec.shoot_id) o.shootId = rec.shoot_id;
+    return o;
+  }
   function byCreated(a, b) { return (a.created || '') < (b.created || '') ? -1 : (a.created || '') > (b.created || '') ? 1 : (a.id < b.id ? -1 : 1); }
   function copy(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -61,7 +79,7 @@
 
     function persist() { jset(KEY, db); }
     function mkShoot(date, from) {
-      return { id: uuid(), date: date, show: from ? from.show : '', loc: from ? from.loc : '', schedFrom: from ? from.schedFrom : '', schedTo: from ? from.schedTo : '', actFrom: '', actTo: '', sigProd: '', sigSage: '' };
+      return { id: uuid(), date: date, show: from ? from.show : '', loc: from ? from.loc : '', schedFrom: from ? from.schedFrom : '', schedTo: from ? from.schedTo : '', actFrom: '', actTo: '', sigProd: '', sigSage: '', sigs: {} };
     }
     function seed() {
       var people = [
@@ -80,9 +98,22 @@
       });
       var d = { sample: true, shoots: [s], rows: {}, crew: people.map(function (p) { return { id: uuid(), name: p[0], desig: p[1], card: p[2] }; }) };
       d.rows[s.id] = rows;
+      var rt = Date.now() + 100;
+      function rr(report, grp, f) { return { id: uuid(), report: report, grp: grp, created: new Date(rt++).toISOString(), d: f }; }
+      d.rrows = {};
+      d.rrows[s.id] = [
+        rr('veh', '', { vname: 'Tempo Traveller', vno: 'TN 09 AB 1234', vendor: 'Sri Murugan Travels', driver: 'Selvam', rep: '06:30', pack: '19:15', skm: '45210', ekm: '45288', called: 'Vasanth', rem: '' }),
+        rr('veh', '', { vname: 'Innova', vno: 'TN 10 CD 5678', vendor: 'City Cabs', driver: 'Raja', rep: '07:00', pack: '', skm: '88120', ekm: '', called: 'Arjun', rem: '' }),
+        rr('cam', '', { item: 'Camera body A', qty: '1', vendor: 'Frames Rentals, T Nagar', attdts: '2', util: 'Yes', rem: '' }),
+        rr('cam', '', { item: 'Lens kit', qty: '1', vendor: 'Frames Rentals, T Nagar', attdts: '1', util: 'No', rem: 'Not needed today' }),
+        rr('pic', '', { vname: 'Van', vno: 'TN 22 EF 9012', vendor: 'Kumar Motors', rep: '06:45', pack: '18:50', called: 'Meena', rem: '' }),
+        rr('van', '', { vtype: 'Star van', vendor: 'Royal Vanity', vno: 'TN 01 GH 3456', attendant: 'Ravi', tin: '07:10', tout: '', used: 'Yes', purpose: 'Lead actor' }),
+        rr('van', 'gen', { item: 'Silent generator', qty: '1', vendor: 'Power Hire, Guindy', kw: '45', s1: '07:00', e1: '12:30', s2: '13:30', e2: '19:00', util: 'Used', rem: '' })
+      ];
       return d;
     }
     if (!db || !db.shoots) { db = seed(); persist(); }
+    if (!db.rrows) { db.rrows = {}; persist(); }
 
     function findShoot(id) { for (var i = 0; i < db.shoots.length; i++) if (db.shoots[i].id === id) return db.shoots[i]; return null; }
     function findRow(id) {
@@ -101,12 +132,12 @@
       listShoots: function () { return Promise.resolve(copy(db.shoots).sort(function (a, b) { return a.date < b.date ? 1 : -1; })); },
       getShoot: function (id) {
         var s = findShoot(id);
-        return Promise.resolve({ shoot: copy(s), rows: copy(db.rows[id] || []).sort(byCreated) });
+        return Promise.resolve({ shoot: copy(s), rows: copy(db.rows[id] || []).sort(byCreated), rrows: copy(db.rrows[id] || []).sort(byCreated) });
       },
       openDate: function (date, defaults) {
         for (var i = 0; i < db.shoots.length; i++) if (db.shoots[i].date === date) return Promise.resolve(copy(db.shoots[i]));
         var s = mkShoot(date, defaults);
-        db.shoots.push(s); db.rows[s.id] = []; persist();
+        db.shoots.push(s); db.rows[s.id] = []; db.rrows[s.id] = []; persist();
         return Promise.resolve(copy(s));
       },
       patchShoot: function (id, fields) { var s = findShoot(id); if (s) { Object.assign(s, fields); persist(); } },
@@ -116,6 +147,16 @@
       },
       patchRow: function (id, fields) { var f = findRow(id); if (f) { Object.assign(f.row, fields); persist(); } },
       deleteRow: function (id) { var f = findRow(id); if (f) { f.list.splice(f.i, 1); persist(); } },
+      addReportRow: function (shootId, row) {
+        if (!db.rrows[shootId]) db.rrows[shootId] = [];
+        db.rrows[shootId].push(copy(row)); persist();
+      },
+      patchReportRow: function (id, fields) {
+        for (var sid in db.rrows) { var l = db.rrows[sid]; for (var i = 0; i < l.length; i++) if (l[i].id === id) { Object.assign(l[i], copy(fields)); persist(); return; } }
+      },
+      deleteReportRow: function (id) {
+        for (var sid in db.rrows) { var l = db.rrows[sid]; for (var i = 0; i < l.length; i++) if (l[i].id === id) { l.splice(i, 1); persist(); return; } }
+      },
       listCrew: function () { return Promise.resolve(copy(db.crew)); },
       addCrew: function (c) {
         for (var i = 0; i < db.crew.length; i++) if (db.crew[i].name.toLowerCase() === c.name.toLowerCase()) return;
@@ -127,6 +168,7 @@
       isSample: function () { return !!db.sample; },
       clearSample: function () {
         Object.keys(db.rows).forEach(function (k) { db.rows[k] = []; });
+        Object.keys(db.rrows).forEach(function (k) { db.rrows[k] = []; });
         db.shoots.forEach(function (s) { s.show = ''; s.loc = ''; });
         db.crew = []; db.sample = false; persist();
       },
@@ -210,6 +252,18 @@
       return Object.keys(byId).map(function (k) { return byId[k]; }).sort(byCreated);
     }
 
+    function overlayR(shootId, rows) {
+      var byId = {};
+      rows.forEach(function (r) { byId[r.id] = r; });
+      outbox.forEach(function (op) {
+        if (op.table !== 'report_rows') return;
+        if (op.t === 'insert' && op.row.shoot_id === shootId && !byId[op.row.id]) { var nr = rrFromDb(op.row); byId[nr.id] = nr; }
+        else if (op.t === 'patch' && byId[op.id]) Object.assign(byId[op.id], rrFromDb(op.fields));
+        else if (op.t === 'delete') delete byId[op.id];
+      });
+      return Object.keys(byId).map(function (k) { return byId[k]; }).sort(byCreated);
+    }
+
     /* ---- session ---- */
     function loadRole() {
       return Promise.resolve(sb.from('profiles').select('role').eq('id', user.id).maybeSingle()).then(function (r) {
@@ -270,18 +324,23 @@
       getShoot: function (id) {
         return Promise.all([
           Promise.resolve(sb.from('shoots').select('*').eq('id', id).maybeSingle()),
-          Promise.resolve(sb.from('attendance').select('*').eq('shoot_id', id).order('created_at', { ascending: true }))
+          Promise.resolve(sb.from('attendance').select('*').eq('shoot_id', id).order('created_at', { ascending: true })),
+          Promise.resolve(sb.from('report_rows').select('*').eq('shoot_id', id).order('created_at', { ascending: true }))
         ]).then(function (r) {
           if (r[0].error) fail(r[0].error);
           if (r[1].error) fail(r[1].error);
+          var rdata = [];
+          if (r[2].error) { if (r[2].error.code !== '42P01' && r[2].error.code !== 'PGRST205') fail(r[2].error); }
+          else rdata = r[2].data;
           var shoot = fromDb(SHOOT_MAP, r[0].data);
           var rows = overlay(id, r[1].data.map(function (x) { return fromDb(ROW_MAP, x); }));
-          var out = { shoot: shoot, rows: rows };
+          var rrows = overlayR(id, rdata.map(rrFromDb));
+          var out = { shoot: shoot, rows: rows, rrows: rrows };
           jset('docket-cache-shoot-' + id, out);
           return out;
         }).catch(function (e) {
           var c = jget('docket-cache-shoot-' + id, null);
-          if (c) { setConn('offline'); c.rows = overlay(id, c.rows); return c; }
+          if (c) { setConn('offline'); c.rows = overlay(id, c.rows); c.rrows = overlayR(id, c.rrows || []); return c; }
           throw e;
         });
       },
@@ -316,6 +375,16 @@
         enqueue({ t: 'patch', table: 'attendance', id: id, fields: f });
       },
       deleteRow: function (id) { enqueue({ t: 'delete', table: 'attendance', id: id }); },
+      addReportRow: function (shootId, row) {
+        var r = rrToDb(row);
+        r.id = row.id; r.shoot_id = shootId; r.created_at = row.created; r.client_id = CLIENT;
+        enqueue({ t: 'insert', table: 'report_rows', row: r });
+      },
+      patchReportRow: function (id, fields) {
+        var f = rrToDb(fields); f.client_id = CLIENT;
+        enqueue({ t: 'patch', table: 'report_rows', id: id, fields: f });
+      },
+      deleteReportRow: function (id) { enqueue({ t: 'delete', table: 'report_rows', id: id }); },
       listCrew: function () {
         return Promise.resolve(sb.from('crew').select('*').order('name', { ascending: true })).then(function (r) {
           if (r.error) fail(r.error);
@@ -344,6 +413,12 @@
             var rec = p.new;
             if (!rec || rec.shoot_id !== curShoot || rec.client_id === CLIENT) return;
             hooks.onRow('upsert', fromDb(ROW_MAP, rec));
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'report_rows' }, function (p) {
+            if (p.eventType === 'DELETE') { if (p.old && p.old.id) hooks.onReportRow('delete', { id: p.old.id }); return; }
+            var rec = p.new;
+            if (!rec || rec.shoot_id !== curShoot || rec.client_id === CLIENT) return;
+            hooks.onReportRow('upsert', rrFromDb(rec));
           })
           .on('postgres_changes', { event: '*', schema: 'public', table: 'shoots' }, function (p) {
             var rec = p.new;

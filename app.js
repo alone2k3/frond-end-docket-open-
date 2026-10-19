@@ -25,6 +25,7 @@
     onShoot: function (partial) { applyRemoteShoot(partial); },
     onShootList: function () { refreshShootList(); },
     onRow: function (type, row) { applyRemoteRow(type, row); },
+    onReportRow: function (type, row) { applyRemoteReportRow(type, row); },
     onCrew: function () { refreshCrew(); },
     onResync: function () { resync(); }
   };
@@ -68,6 +69,7 @@
     for (var i = 0; i < meta.length; i++) meta[i].disabled = !canEdit() || meta[i].getAttribute('data-m') === 'date';
     $('addForm').hidden = !canEdit();
     $('openDateBtn').hidden = false;
+    if (st.shoot && st.view !== 'att') renderReport();
   }
 
   /* ---------- auth ---------- */
@@ -136,8 +138,9 @@
   function openShoot(id) {
     flushAll();
     return B.getShoot(id).then(function (r) {
-      st.shoot = r.shoot; st.rows = r.rows;
+      st.shoot = r.shoot; st.rows = r.rows; st.rrows = r.rrows || [];
       fillMeta(); renderRows(); renderFoot(); renderUser();
+      setView(st.view);
       B.watch(id);
       renderConn();
     });
@@ -158,8 +161,10 @@
     if (!st.shoot) return;
     flushAll();
     B.getShoot(st.shoot.id).then(function (r) {
-      st.shoot = r.shoot; st.rows = r.rows;
+      st.shoot = r.shoot; st.rows = r.rows; st.rrows = r.rrows || [];
       fillMeta(); renderRowsKeepFocus(); renderFoot();
+      if (st.view !== 'att') renderReport();
+      updateNav();
     }, function () {});
     refreshShootList(); refreshCrew();
   }
@@ -177,9 +182,10 @@
 
   /* ---------- batching of edits ---------- */
   var pend = {};
-  function queue(kind, id, fields, now) {
+  function queue(kind, id, fields, now, keys) {
     var key = kind + ':' + id;
-    var p = pend[key] || (pend[key] = { kind: kind, id: id, fields: {}, timer: null });
+    var p = pend[key] || (pend[key] = { kind: kind, id: id, fields: {}, keys: {}, timer: null });
+    (keys || []).forEach(function (k) { p.keys[k] = 1; });
     Object.keys(fields).forEach(function (k) { p.fields[k] = fields[k]; });
     clearTimeout(p.timer);
     if (now) flushKey(key); else p.timer = setTimeout(function () { flushKey(key); }, 350);
@@ -188,7 +194,7 @@
     var p = pend[key];
     if (!p) return;
     clearTimeout(p.timer); delete pend[key];
-    if (p.kind === 'r') B.patchRow(p.id, p.fields); else B.patchShoot(p.id, p.fields);
+    if (p.kind === 'r') B.patchRow(p.id, p.fields); else if (p.kind === 'rr') B.patchReportRow(p.id, p.fields); else B.patchShoot(p.id, p.fields);
     renderConn();
   }
   function flushAll() { Object.keys(pend).forEach(flushKey); }
@@ -352,7 +358,8 @@
       if (hasPending('s', st.shoot.id, k)) return;
       st.shoot[k] = partial[k];
     });
-    fillMeta(); renderFoot();
+    if (!st.shoot.sigs || typeof st.shoot.sigs !== 'object') st.shoot.sigs = {};
+    fillMeta(); renderFoot(); renderRFoot();
   }
 
   /* ---------- editing rows ---------- */
@@ -546,6 +553,18 @@
       var o = {}; o[t.key] = data;
       queue('r', t.id, o, true);
       refreshRowDom(t.id);
+    } else if (t.kind === 'rrow') {
+      var ri = rrIndex(t.id);
+      if (ri < 0) return;
+      st.rrows[ri].d[t.key] = data;
+      saveRR(st.rrows[ri], t.key, true);
+      refreshRRDom(t.id);
+    } else if (t.kind === 'rfoot') {
+      var ns = Object.assign({}, sigs());
+      if (data) ns[t.key] = data; else delete ns[t.key];
+      st.shoot.sigs = ns;
+      queue('s', st.shoot.id, { sigs: ns }, true);
+      renderRFoot();
     } else {
       st.shoot[t.key] = data;
       var p = {}; p[t.key] = data;
@@ -554,6 +573,352 @@
     }
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').hidden) closePad(); });
+
+  /* ---------- more reports: vehicle, camera, picture vehicle, vanity van + generator ---------- */
+  var T = 'text', TM = 'time', NUM = 'num', YN = 'yn', SIG = 'sig', CT = 'calcTime', CK = 'calcKm';
+  function C(k, l, t, w, o) { var c = { k: k, l: l, t: t, w: w || 'minmax(110px,1fr)' }; if (o) Object.keys(o).forEach(function (x) { c[x] = o[x]; }); return c; }
+  function n0(v) { var x = parseFloat(v); return isNaN(x) ? 0 : x; }
+  function minutes(v) { var m = /^(\d{1,2}):(\d{2})/.exec(v || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+  function calcVal(c, d) {
+    if (c.t === CT) {
+      var a = minutes(d[c.from]), b = minutes(d[c.to]);
+      if (a == null || b == null) return '';
+      var diff = (b - a + 1440) % 1440;
+      return Math.floor(diff / 60) + ':' + String(diff % 60).padStart(2, '0');
+    }
+    var x = parseFloat(d[c.from]), y = parseFloat(d[c.to]);
+    if (isNaN(x) || isNaN(y) || y < x) return '';
+    return String(Math.round((y - x) * 10) / 10);
+  }
+  function usageCols() {
+    var out = [];
+    for (var i = 1; i <= 4; i++) { out.push(C('s' + i, 'Usage start ' + i, TM, '132px', { now: false })); out.push(C('e' + i, 'Usage end ' + i, TM, '132px', { now: false })); }
+    return out;
+  }
+  var REPORTS = {
+    veh: {
+      title: 'Vehicle report',
+      tables: [{ grp: '', cols: [
+        C('vname', 'Vehicle name', T, 'minmax(130px,1.2fr)', { wide: 1 }), C('vno', 'Vehicle number', T, '130px'),
+        C('vendor', 'Vendor name', T, 'minmax(130px,1.2fr)', { wide: 1 }), C('driver', 'Driver name', T, 'minmax(120px,1fr)', { wide: 1 }),
+        C('sign', 'Sign.', SIG, '100px'), C('rep', 'Reporting time', TM, '198px'), C('pack', 'Packup time', TM, '198px'),
+        C('ttime', 'Total time', CT, '80px', { from: 'rep', to: 'pack' }),
+        C('skm', 'Start km', NUM, '92px'), C('ekm', 'End km', NUM, '92px'), C('tkm', 'Total km', CK, '80px', { from: 'skm', to: 'ekm' }),
+        C('called', 'Called by', T, 'minmax(110px,1fr)'), C('rem', 'Remarks', T, 'minmax(150px,1.4fr)', { wide: 1 })] }],
+      stats: function (rows) {
+        var km = 0, out = 0, done = 0;
+        rows.forEach(function (r) { km += n0(calcVal({ t: CK, from: 'skm', to: 'ekm' }, r.d)); if (r.d.rep && !r.d.pack) out++; if (r.d.pack) done++; });
+        return [[rows.length, 'Vehicles'], [Math.round(km * 10) / 10, 'Total km'], [out, 'Still out', 'warn'], [done, 'Packed up', 'good']];
+      }
+    },
+    cam: {
+      title: 'Camera report', sub: 'To include only items purchased by Spot Dept.',
+      tables: [{ grp: '', cols: [
+        C('item', 'Item', T, 'minmax(160px,1.4fr)', { wide: 1 }), C('qty', 'Quantity', NUM, '100px'),
+        C('vendor', 'Vendor name & address', T, 'minmax(180px,1.6fr)', { wide: 1 }), C('attdts', 'No. of attdts.', NUM, '100px'),
+        C('util', 'Utilization', YN, '110px'), C('rem', 'Remarks', T, 'minmax(150px,1.4fr)', { wide: 1 })] }],
+      stats: function (rows) {
+        var q = 0, a = 0, y = 0;
+        rows.forEach(function (r) { q += n0(r.d.qty); a += n0(r.d.attdts); if (r.d.util === 'Yes') y++; });
+        return [[rows.length, 'Items'], [q, 'Total quantity'], [a, 'Attendants'], [y, 'Utilised', 'good']];
+      }
+    },
+    pic: {
+      title: 'Picture vehicle report',
+      tables: [{ grp: '', cols: [
+        C('vname', 'Vehicle name', T, 'minmax(130px,1.2fr)', { wide: 1 }), C('vno', 'Vehicle number', T, '130px'),
+        C('vendor', 'Vendor name', T, 'minmax(140px,1.3fr)', { wide: 1 }),
+        C('rep', 'Reporting time', TM, '198px'), C('pack', 'Packup time', TM, '198px'),
+        C('ttime', 'Total time', CT, '80px', { from: 'rep', to: 'pack' }),
+        C('called', 'Called by', T, 'minmax(110px,1fr)'), C('rem', 'Remark', T, 'minmax(150px,1.4fr)', { wide: 1 })] }],
+      stats: function (rows) {
+        var out = 0, done = 0;
+        rows.forEach(function (r) { if (r.d.rep && !r.d.pack) out++; if (r.d.pack) done++; });
+        return [[rows.length, 'Vehicles'], [out, 'Still out', 'warn'], [done, 'Packed up', 'good']];
+      }
+    },
+    van: {
+      title: 'Vanity van report',
+      tables: [
+        { grp: '', cols: [
+          C('vtype', 'Vanity type', T, 'minmax(120px,1fr)'), C('vendor', 'Vendor name', T, 'minmax(130px,1.2fr)', { wide: 1 }),
+          C('vno', 'Vehicle number', T, '130px'), C('attendant', 'Attendant', T, 'minmax(110px,1fr)'),
+          C('tin', 'Time in', TM, '198px'), C('sin', 'Sign in', SIG, '100px'),
+          C('tout', 'Time out', TM, '198px'), C('sout', 'Sign out', SIG, '100px'),
+          C('used', 'Used (Y/N)', YN, '100px'), C('purpose', 'Purpose', T, 'minmax(150px,1.4fr)', { wide: 1 })] },
+        { grp: 'gen', title: 'Generator report', cols: [
+          C('item', 'Item', T, 'minmax(130px,1.2fr)', { wide: 1 }), C('qty', 'Qty', NUM, '70px'),
+          C('vendor', 'Vendor name & address', T, 'minmax(170px,1.5fr)', { wide: 1 }), C('kw', 'KW', NUM, '76px')
+        ].concat(usageCols()).concat([
+          C('util', 'Utilisation', T, 'minmax(100px,1fr)'), C('rem', 'Remark (stands by / others)', T, 'minmax(150px,1.4fr)', { wide: 1 })]) }
+      ],
+      stats: function (rows) {
+        var vans = 0, use = 0, gens = 0;
+        rows.forEach(function (r) { if (r.grp === 'gen') gens++; else { vans++; if (r.d.tin && !r.d.tout) use++; } });
+        return [[vans, 'Vanity vans'], [use, 'In use now', 'warn'], [gens, 'Generators']];
+      }
+    }
+  };
+  var VIEWS = ['att', 'veh', 'cam', 'pic', 'van'];
+  st.view = 'att'; st.rrows = [];
+  var rToastTimer = null;
+
+  function rowsOf(report, grp) {
+    return st.rrows.filter(function (r) { return r.report === report && (grp == null || (r.grp || '') === grp); });
+  }
+  function rrIndex(id) { for (var i = 0; i < st.rrows.length; i++) if (st.rrows[i].id === id) return i; return -1; }
+  function tableOfRow(r) {
+    var def = REPORTS[r.report], tabs = def ? def.tables : [];
+    for (var i = 0; i < tabs.length; i++) if (tabs[i].grp === (r.grp || '')) return tabs[i];
+    return tabs[0];
+  }
+  function gridOf(tb) {
+    var minw = 48 + 34, widths = tb.cols.map(function (c) { var m = /\d+/.exec(c.w); minw += m ? +m[0] : 100; return c.w; });
+    minw += 8 * (tb.cols.length + 2) + 32;
+    return { cols: '48px ' + widths.join(' ') + ' 34px', minw: minw };
+  }
+  function sigs() { var s = st.shoot && st.shoot.sigs; return s && typeof s === 'object' ? s : {}; }
+
+  function rSig(r, k) {
+    var data = r.d[k], dis = canEdit() ? '' : ' disabled';
+    if (data) return '<button type="button" class="sigthumb" data-act="sign" data-k="' + k + '"' + dis + ' aria-label="Edit signature"><img alt="Signature" src="' + esc(data) + '"></button>';
+    return '<button type="button" class="btn ghost sm" data-act="sign" data-k="' + k + '"' + dis + '>Sign</button>';
+  }
+  function rCell(c, r, dis) {
+    var v = r.d[c.k] || '', lab = ' data-l="' + esc(c.l) + '"', cls = 'c' + (c.wide ? ' wide' : ''), al = ' aria-label="' + esc(c.l) + '"';
+    if (c.t === T) return '<div class="' + cls + '"' + lab + '><input type="text" data-f="' + c.k + '" value="' + esc(v) + '"' + al + dis + '></div>';
+    if (c.t === NUM) return '<div class="' + cls + '"' + lab + '><input type="number" inputmode="decimal" step="any" data-f="' + c.k + '" value="' + esc(v) + '"' + al + dis + '></div>';
+    if (c.t === TM) return '<div class="' + cls + '"' + lab + '><div class="tm"><input type="time" data-f="' + c.k + '" value="' + esc(v) + '"' + al + dis + '>' +
+      (c.now === false ? '' : '<button type="button" class="btn ghost sm" data-act="now" data-k="' + c.k + '"' + dis + '>Now</button>') + '</div></div>';
+    if (c.t === YN) return '<div class="' + cls + '"' + lab + '><select class="yn" data-f="' + c.k + '"' + al + dis + '>' +
+      ['', 'Yes', 'No'].map(function (o) { return '<option value="' + o + '"' + (v === o ? ' selected' : '') + '>' + (o || '–') + '</option>'; }).join('') + '</select></div>';
+    if (c.t === SIG) return '<div class="' + cls + '"' + lab + ' data-sig="' + c.k + '">' + rSig(r, c.k) + '</div>';
+    var cv = calcVal(c, r.d);
+    return '<div class="' + cls + '"' + lab + '><output class="calc' + (cv ? '' : ' empty') + '" data-calc="' + c.k + '">' + (cv || '–') + '</output></div>';
+  }
+  function rRowHTML(r, i, tb) {
+    var dis = canEdit() ? '' : ' disabled';
+    return '<div class="rrow" data-id="' + r.id + '"><div class="c srw"><span class="srn">' + (i + 1) + '</span></div>' +
+      tb.cols.map(function (c) { return rCell(c, r, dis); }).join('') +
+      '<div class="c dl"><button type="button" class="del" data-act="del"' + dis + ' aria-label="Remove row ' + (i + 1) + '">&times;</button></div></div>';
+  }
+  function rStatsHTML() {
+    var def = REPORTS[st.view];
+    return def.stats(rowsOf(st.view)).map(function (s) { return '<div class="stat ' + (s[2] || '') + '"><b>' + s[0].toLocaleString('en-IN') + '</b><span>' + esc(s[1]) + '</span></div>'; }).join('');
+  }
+  function rFootHTML() {
+    var sg = sigs();
+    return [['prod', 'Production team signature'], ['sage', 'SAGE team signature']].map(function (p) {
+      var data = sg[st.view + '_' + p[0]];
+      return '<div class="sigbox"><span class="lbl">' + p[1] + '</span><button type="button" class="sigarea" data-rfoot="' + p[0] + '"' + (canEdit() ? '' : ' disabled') + '>' +
+        (data ? '<img alt="Signature" src="' + esc(data) + '">' : 'Tap to sign') + '</button>' +
+        (data && canEdit() ? '<button type="button" class="clear" data-rfootclear="' + p[0] + '">Clear signature</button>' : '') + '</div>';
+    }).join('');
+  }
+  function renderRFoot() { var el = $('rfoot'); if (el && st.view !== 'att') el.innerHTML = rFootHTML(); }
+  function updateRStats() { var el = $('rstats'); if (el && st.view !== 'att') el.innerHTML = rStatsHTML(); }
+
+  function renderReport() {
+    var def = REPORTS[st.view];
+    if (!def) return;
+    var keepScroll = [], old = $('view-rep').querySelectorAll('.rscroll');
+    for (var q = 0; q < old.length; q++) keepScroll.push(old[q].scrollLeft);
+    var html = '<section class="panel"><div class="rhead"><div><h2>' + esc(def.title) + '</h2>' + (def.sub ? '<div class="rsub">' + esc(def.sub) + '</div>' : '') + '</div>' +
+      '<div class="reg-actions"><span class="toast" id="rtoast" role="status"></span><button class="btn ghost sm" type="button" data-ract="copy">Copy for Excel</button>' +
+      '<button class="btn ghost sm" type="button" data-ract="csv">Download CSV</button><button class="btn sm" type="button" data-ract="print">Print / Save PDF</button></div></div>' +
+      '<div class="counts solo"><div class="stats" id="rstats">' + rStatsHTML() + '</div></div></section>';
+    def.tables.forEach(function (tb) {
+      var rows = rowsOf(st.view, tb.grp), g = gridOf(tb);
+      html += '<section class="panel rtable" aria-label="' + esc(tb.title || def.title) + '">' + (tb.title ? '<div class="reg-head"><h2>' + esc(tb.title) + '</h2></div>' : '') +
+        '<div class="rscroll"><div class="rgrid" style="--cols:' + g.cols + ';--minw:' + g.minw + 'px">' +
+        '<div class="rcols" aria-hidden="true"><span>Sr.</span>' + tb.cols.map(function (c) { return '<span>' + esc(c.l) + '</span>'; }).join('') + '<span></span></div>' +
+        '<div class="rrows" data-grp="' + tb.grp + '">' + (rows.length ? rows.map(function (r, i) { return rRowHTML(r, i, tb); }).join('') :
+          '<div class="rrow" style="grid-template-columns:1fr"><div class="empty-note">' + (canEdit() ? 'No rows yet. Tap “Add row” to start.' : 'An editor has not added anything here for this day yet.') + '</div></div>') +
+        '</div></div></div><div class="radd"><button type="button" class="btn sm" data-radd="' + tb.grp + '">+ Add row</button><span class="hint">' + rows.length + (rows.length === 1 ? ' row' : ' rows') + '</span></div></section>';
+    });
+    html += '<section class="panel foot" id="rfoot" aria-label="Team signatures">' + rFootHTML() + '</section>';
+    $('view-rep').innerHTML = html;
+    var nw = $('view-rep').querySelectorAll('.rscroll');
+    for (var z = 0; z < nw.length; z++) if (keepScroll[z]) nw[z].scrollLeft = keepScroll[z];
+  }
+
+  function updateNav() {
+    document.querySelectorAll('[data-nc]').forEach(function (el) {
+      var k = el.getAttribute('data-nc'), n = k === 'att' ? st.rows.length : rowsOf(k).length;
+      el.textContent = n ? String(n) : '';
+    });
+  }
+  function setView(v, fromClick) {
+    if (VIEWS.indexOf(v) < 0) v = 'att';
+    st.view = v;
+    $('view-att').hidden = v !== 'att';
+    $('view-rep').hidden = v === 'att';
+    document.querySelectorAll('.navb').forEach(function (b) {
+      if (b.getAttribute('data-view') === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+    $('subTitle').textContent = 'Shoot review sheet · ' + (v === 'att' ? 'Attendance report' : REPORTS[v].title);
+    if (v !== 'att') renderReport();
+    updateNav();
+    try { localStorage.setItem('docket-view', v); } catch (e) {}
+    try { if (location.hash !== '#' + v) history.replaceState(null, '', '#' + v); } catch (e) {}
+    if (fromClick) window.scrollTo(0, 0);
+  }
+  $('nav').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-view]');
+    if (b) setView(b.getAttribute('data-view'), true);
+  });
+  function startView() {
+    var v = (location.hash || '').replace('#', '');
+    if (VIEWS.indexOf(v) < 0) { try { v = localStorage.getItem('docket-view') || 'att'; } catch (e) { v = 'att'; } }
+    st.view = VIEWS.indexOf(v) < 0 ? 'att' : v;
+  }
+  startView();
+  function rToast(msg) {
+    var t = $('rtoast'); if (!t) return;
+    t.textContent = msg; clearTimeout(rToastTimer);
+    rToastTimer = setTimeout(function () { var x = $('rtoast'); if (x) x.textContent = ''; }, 2500);
+  }
+
+  /* editing report rows */
+  function rRowEl(id) { return $('view-rep').querySelector('.rrow[data-id="' + id + '"]'); }
+  function refreshRRDom(id) {
+    var i = rrIndex(id), el = rRowEl(id);
+    if (i < 0 || !el) return;
+    var r = st.rrows[i], tb = tableOfRow(r);
+    el.querySelectorAll('[data-f]').forEach(function (inp) { if (inp !== document.activeElement) inp.value = r.d[inp.getAttribute('data-f')] || ''; });
+    tb.cols.forEach(function (c) {
+      if (c.t === SIG) { var cell = el.querySelector('[data-sig="' + c.k + '"]'); if (cell) cell.innerHTML = rSig(r, c.k); }
+      else if (c.t === CT || c.t === CK) {
+        var o = el.querySelector('[data-calc="' + c.k + '"]'), cv = calcVal(c, r.d);
+        if (o) { o.textContent = cv || '–'; o.className = 'calc' + (cv ? '' : ' empty'); }
+      }
+    });
+    updateRStats();
+  }
+  function saveRR(r, key, now) {
+    queue('rr', r.id, { d: JSON.parse(JSON.stringify(r.d)) }, now, [key]);
+  }
+  $('view-rep').addEventListener('input', function (e) {
+    var f = e.target.getAttribute && e.target.getAttribute('data-f');
+    if (!f || !canEdit()) return;
+    var rw = e.target.closest('.rrow'), i = rrIndex(rw && rw.getAttribute('data-id'));
+    if (i < 0) return;
+    st.rrows[i].d[f] = e.target.value;
+    saveRR(st.rrows[i], f);
+    refreshRRDom(st.rrows[i].id);
+  });
+  var rArm = null;
+  $('view-rep').addEventListener('click', function (e) {
+    var t = e.target;
+    var ra = t.closest('[data-ract]');
+    if (ra) { reportAction(ra.getAttribute('data-ract')); return; }
+    if (!canEdit() || !st.shoot) return;
+    var add = t.closest('[data-radd]');
+    if (add) {
+      var row = { id: B.uuid(), report: st.view, grp: add.getAttribute('data-radd') || '', created: new Date().toISOString(), d: {} };
+      st.rrows.push(row); B.addReportRow(st.shoot.id, row);
+      renderReport(); updateNav(); renderConn();
+      var fresh = rRowEl(row.id), first = fresh && fresh.querySelector('input:not([type=hidden])');
+      if (first) first.focus();
+      return;
+    }
+    var rf = t.closest('[data-rfoot]');
+    if (rf) { var k = rf.getAttribute('data-rfoot'); openPad({ kind: 'rfoot', key: st.view + '_' + k }, k === 'prod' ? 'Production team' : 'SAGE team'); return; }
+    var rc = t.closest('[data-rfootclear]');
+    if (rc) {
+      var key = st.view + '_' + rc.getAttribute('data-rfootclear'), ns = Object.assign({}, sigs());
+      delete ns[key]; st.shoot.sigs = ns;
+      queue('s', st.shoot.id, { sigs: ns }, true);
+      renderRFoot(); return;
+    }
+    var btn = t.closest('[data-act]');
+    if (!btn) return;
+    var rw = btn.closest('.rrow'), id = rw && rw.getAttribute('data-id'), i = rrIndex(id);
+    if (i < 0) return;
+    var r = st.rrows[i], act = btn.getAttribute('data-act'), kk = btn.getAttribute('data-k');
+    if (act === 'now') {
+      r.d[kk] = nowHM(); saveRR(r, kk, true); refreshRRDom(id);
+      var inp = rw.querySelector('[data-f="' + kk + '"]'); if (inp) inp.value = r.d[kk];
+    } else if (act === 'sign') {
+      openPad({ kind: 'rrow', id: id, key: kk }, (tableOfRow(r).cols.filter(function (c) { return c.k === kk; })[0] || {}).l || 'Signature');
+    } else if (act === 'del') {
+      if (btn.getAttribute('data-armed')) {
+        clearTimeout(rArm);
+        st.rrows.splice(i, 1); delete pend['rr:' + id];
+        B.deleteReportRow(id);
+        renderReport(); updateNav(); renderConn();
+      } else {
+        btn.setAttribute('data-armed', '1'); btn.textContent = 'Sure?'; btn.classList.add('armed');
+        clearTimeout(rArm);
+        rArm = setTimeout(function () { btn.removeAttribute('data-armed'); btn.innerHTML = '&times;'; btn.classList.remove('armed'); }, 3000);
+      }
+    }
+  });
+
+  function applyRemoteReportRow(type, row) {
+    if (type === 'delete') {
+      var di = rrIndex(row.id);
+      if (di >= 0) { var rep = st.rrows[di].report; st.rrows.splice(di, 1); if (st.view === rep) renderReport(); updateNav(); }
+      return;
+    }
+    var i = rrIndex(row.id);
+    if (i >= 0) {
+      var cur = st.rrows[i], p = pend['rr:' + row.id];
+      Object.keys(row.d || {}).forEach(function (k) { if (!(p && p.keys && p.keys[k])) cur.d[k] = row.d[k]; });
+      if (st.view === cur.report) refreshRRDom(row.id);
+    } else {
+      st.rrows.push({ id: row.id, report: row.report, grp: row.grp || '', created: row.created || '', d: row.d || {} });
+      st.rrows.sort(function (a, b) { return (a.created || '') < (b.created || '') ? -1 : 1; });
+      if (st.view === row.report) renderReport();
+    }
+    updateNav();
+  }
+
+  /* exports for the report screens */
+  function reportLines() {
+    var def = REPORTS[st.view], out = [];
+    def.tables.forEach(function (tb, ti) {
+      if (ti) out.push({ blank: true });
+      if (tb.title) out.push({ title: tb.title });
+      out.push({ head: true, cells: ['Sr. No.'].concat(tb.cols.map(function (c) { return c.l; })) });
+      rowsOf(st.view, tb.grp).forEach(function (r, i) {
+        out.push({ cells: [i + 1].concat(tb.cols.map(function (c) {
+          if (c.t === SIG) return r.d[c.k] ? 'Yes' : 'No';
+          if (c.t === CT || c.t === CK) return calcVal(c, r.d);
+          return r.d[c.k] || '';
+        })) });
+      });
+    });
+    return out;
+  }
+  function reportAction(a) {
+    var sh = st.shoot || {}, def = REPORTS[st.view], lines = reportLines();
+    if (a === 'print') { window.print(); return; }
+    if (a === 'copy') {
+      var text = lines.map(function (l) { return l.blank ? '' : l.title ? l.title : l.cells.map(safeCell).join('\t'); }).join('\n');
+      var done = function (ok) { rToast(ok ? 'Copied. Paste into Excel.' : 'Copy was blocked by this browser.'); };
+      var fb = function () {
+        var ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); var ok = false;
+        try { ok = document.execCommand('copy'); } catch (err) {}
+        document.body.removeChild(ta); done(ok);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { done(true); }, fb); else fb();
+      return;
+    }
+    var csv = lines.map(function (l) {
+      if (l.blank) return '';
+      if (l.title) return csvCell(l.title);
+      var pre = l.head ? ['Date', 'Movie / Show', 'Location'] : [sh.date, sh.show, sh.loc];
+      return pre.concat(l.cells).map(csvCell).join(',');
+    }).join('\r\n');
+    var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob), el = document.createElement('a');
+    el.href = url; el.download = st.view + '-report-' + (sh.date || 'sheet') + '.csv';
+    document.body.appendChild(el); el.click(); document.body.removeChild(el);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    rToast('CSV downloaded.');
+  }
 
   /* ---------- team access (editors only) ---------- */
   function refreshTeam() {

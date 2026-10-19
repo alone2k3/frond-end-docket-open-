@@ -123,3 +123,31 @@ create policy "write crew" on public.crew for all to authenticated using (public
 alter publication supabase_realtime add table public.shoots;
 alter publication supabase_realtime add table public.attendance;
 alter publication supabase_realtime add table public.crew;
+
+-- ---------------------------------------------------------------- more reports (v2)
+-- Vehicle, Camera, Picture Vehicle and Vanity Van / Generator reports all live in one table.
+-- report: veh | cam | pic | van   grp: '' for the main table, 'gen' for the generator table.
+-- data holds that row's fields (times, names, signatures...) as JSON.
+alter table public.shoots add column if not exists sigs jsonb not null default '{}'::jsonb;
+
+create table if not exists public.report_rows (
+  id uuid primary key,
+  shoot_id uuid not null references public.shoots (id) on delete cascade,
+  report text not null check (report in ('veh', 'cam', 'pic', 'van')),
+  grp text not null default '',
+  data jsonb not null default '{}'::jsonb,
+  client_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists report_rows_shoot_idx on public.report_rows (shoot_id, report, created_at);
+drop trigger if exists report_rows_touch on public.report_rows;
+create trigger report_rows_touch before update on public.report_rows for each row execute function public.touch_updated_at();
+
+alter table public.report_rows enable row level security;
+drop policy if exists "read report_rows" on public.report_rows;
+create policy "read report_rows" on public.report_rows for select to authenticated using (public.is_member());
+drop policy if exists "write report_rows" on public.report_rows;
+create policy "write report_rows" on public.report_rows for all to authenticated using (public.is_editor()) with check (public.is_editor());
+
+alter publication supabase_realtime add table public.report_rows;

@@ -51,10 +51,22 @@
 </main>
 
 <div class="sheet" id="appScreen" hidden>
+ <div class="layout">
+  <aside class="side" id="side">
+    <nav class="nav" id="nav" aria-label="Reports">
+      <span class="navh">Reports</span>
+      <button type="button" class="navb" data-view="att"><span class="nl">Attendance</span><span class="nc" data-nc="att"></span></button>
+      <button type="button" class="navb" data-view="veh"><span class="nl">Vehicle Report</span><span class="nc" data-nc="veh"></span></button>
+      <button type="button" class="navb" data-view="cam"><span class="nl">Camera Report</span><span class="nc" data-nc="cam"></span></button>
+      <button type="button" class="navb" data-view="pic"><span class="nl">Picture Vehicle</span><span class="nc" data-nc="pic"></span></button>
+      <button type="button" class="navb" data-view="van"><span class="nl">Vanity Van &amp; Generator</span><span class="nc" data-nc="van"></span></button>
+    </nav>
+  </aside>
+  <div class="main">
   <div class="top">
     <div>
       <h1>Front End Docket</h1>
-      <div class="sub">Shoot review sheet &middot; Attendance report</div>
+      <div class="sub" id="subTitle">Shoot review sheet &middot; Attendance report</div>
     </div>
     <div class="userbar">
       <span class="conn" id="conn"><i class="dot" id="connDot"></i><span id="connTxt"></span></span>
@@ -90,6 +102,7 @@
     </div>
   </section>
 
+  <div class="view" id="view-att">
   <section class="panel counts" aria-label="Crew count">
     <div class="stats" id="stats"></div>
     <div class="depts" id="depts"></div>
@@ -133,6 +146,10 @@
     </div>
   </section>
 
+  </div>
+
+  <div class="view" id="view-rep" hidden></div>
+
   <details class="panel team" id="teamBox" hidden>
     <summary id="teamSum">Team access</summary>
     <div class="teamlist" id="teamList"></div>
@@ -140,6 +157,8 @@
   </details>
 
   <p class="hint" id="footHint"></p>
+  </div>
+ </div>
 </div>
 
 <div class="modal" id="modal" hidden>

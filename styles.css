@@ -208,8 +208,10 @@ input:disabled, select:disabled { opacity: 0.75; cursor: not-allowed; }
 
 
 /* ---- left menu: one entry per report ---- */
+.logo { display: block; height: 38px; width: auto; flex: 0 0 auto; }
 .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
-.side { position: sticky; top: 0; z-index: 5; margin-inline: -16px; padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.side { position: sticky; top: 0; z-index: 5; margin-inline: -16px; padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--rule); display: flex; align-items: center; gap: 12px; }
+.side .nav { flex: 1 1 auto; min-width: 0; }
 .nav { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: thin; }
 .navh { display: none; }
 .navb { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 14px; min-height: 44px; cursor: pointer; font-weight: 600; white-space: nowrap; }
@@ -218,7 +220,8 @@ input:disabled, select:disabled { opacity: 0.75; cursor: not-allowed; }
 .navb[aria-current="page"] .nc { color: inherit; opacity: 0.85; }
 @media (min-width: 900px) {
   .layout { grid-template-columns: 210px minmax(0, 1fr); align-items: start; }
-  .side { top: 16px; margin: 0; padding: 0; border: 0; background: transparent; }
+  .side { top: 16px; margin: 0; padding: 0; border: 0; background: transparent; display: block; }
+  .logo { height: 58px; margin: 0 0 10px 4px; }
   .nav { flex-direction: column; overflow: visible; }
   .navh { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); padding: 2px 4px 4px; }
   .navb { white-space: normal; border-left-width: 4px; }
@@ -259,3 +262,44 @@ body.viewonly .rrow .del { display: none; }
 .counts.solo .stats { border-bottom: 0; }
 .rrow .c.dl { grid-column: 1 / -1; }
 @media (min-width: 1020px) { .rrow .c.dl { grid-column: auto; } }
+
+/* ---- print for the report screens: fit the page, ruled like the paper sheet ---- */
+@media print {
+  @page { size: A4 landscape; margin: 8mm; }
+  body { padding: 0 !important; font-size: 10px; }
+  body .layout { display: block !important; }
+  body .side, body .radd, body .notice, body .dayrow, body .counts.solo, body .rhead .reg-actions, body .team, body .userbar, body .hint { display: none !important; }
+  body .main, body .view { display: block !important; }
+  body .main > *, body .view > * { margin-bottom: 6px; }
+  .top { margin-bottom: 4px; }
+  .top h1 { font-size: 20px; color: #111 !important; }
+  .top .sub { font-size: 10px; margin: 0; }
+  .meta { grid-template-columns: repeat(6, auto) !important; padding: 4px 8px; gap: 2px 14px; }
+  .meta .fld.wide { grid-column: auto; }
+  .meta .fld > span { font-size: 8px; }
+  .meta input { font-size: 10px; min-height: 0 !important; width: auto; max-width: 150px; }
+  .meta input::-webkit-calendar-picker-indicator, .rrow input::-webkit-calendar-picker-indicator { display: none; }
+  .rhead { padding: 4px 8px; }
+  .rhead h2 { font-size: 17px; }
+  .rscroll { overflow: visible; }
+  .rgrid { min-width: 0 !important; }
+  .rcols, .rrow { grid-template-columns: var(--pcols) !important; gap: 0 !important; padding: 0 !important; align-items: stretch; }
+  .rcols { border-block: 1px solid #555; background: #eee !important; }
+  .rcols span { font-size: 7.5px; padding: 3px 3px; border-right: 1px solid #aaa; line-height: 1.15; overflow-wrap: anywhere; }
+  .rrow { border-bottom: 1px solid #888; min-height: 20px; }
+  .rrow > .c { padding: 2px 3px; border-right: 1px solid #aaa; min-width: 0; justify-content: center; }
+  .rrow .c.dl { display: none !important; }
+  .rrow .srn { font-size: 10px; }
+  .rrow .tm { display: block; }
+  .rrow .tm .btn, .rrow .sigthumb + *, .rrow .btn { display: none !important; }
+  .rrow input, .rrow select, .rrow .calc { font-size: 9.5px; width: 100%; min-height: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; text-overflow: clip; }
+  .rrow .sigthumb { height: 22px; max-width: none; }
+  .rtable .reg-head { padding: 4px 8px; }
+  .rtable .reg-head h2 { font-size: 14px; }
+  .rtable { break-inside: auto; }
+  .foot { grid-template-columns: 1fr 1fr; padding: 6px 8px; }
+  .foot .sigarea { height: 46px; }
+  .foot .lbl { font-size: 8px; }
+  input[data-e] { color: transparent !important; }
+  .sigarea:not(:has(img)) { color: transparent !important; }
+}

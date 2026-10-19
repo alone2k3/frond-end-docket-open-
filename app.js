@@ -208,6 +208,7 @@
     Object.keys(metaMap).forEach(function (k) {
       var el = $(metaMap[k]);
       if (el !== document.activeElement) el.value = (st.shoot && st.shoot[k]) || '';
+      markEmpty(el);
     });
   }
   document.querySelectorAll('[data-m]').forEach(function (el) {
@@ -215,6 +216,7 @@
       if (!st.shoot || !canEdit()) return;
       var k = el.getAttribute('data-m');
       st.shoot[k] = el.value;
+      markEmpty(el);
       queue('s', st.shoot.id, (function () { var o = {}; o[k] = el.value; return o; })());
       if (k === 'show') {
         var opt = $('shootSel').selectedOptions[0];
@@ -675,7 +677,10 @@
   function gridOf(tb) {
     var minw = 48 + 34, widths = tb.cols.map(function (c) { var m = /\d+/.exec(c.w); minw += m ? +m[0] : 100; return c.w; });
     minw += 8 * (tb.cols.length + 2) + 32;
-    return { cols: '48px ' + widths.join(' ') + ' 34px', minw: minw };
+    /* on paper the columns share the page width instead of using fixed pixel widths */
+    var weight = { text: 1.1, num: 0.6, time: 0.85, yn: 0.55, sig: 0.8, calcTime: 0.6, calcKm: 0.6 };
+    var pw = tb.cols.map(function (c) { return ((weight[c.t] || 1) * (c.wide ? 1.35 : 1)).toFixed(2) + 'fr'; });
+    return { cols: '48px ' + widths.join(' ') + ' 34px', minw: minw, pcols: '0.35fr ' + pw.join(' ') };
   }
   function sigs() { var s = st.shoot && st.shoot.sigs; return s && typeof s === 'object' ? s : {}; }
 
@@ -688,7 +693,7 @@
     var v = r.d[c.k] || '', lab = ' data-l="' + esc(c.l) + '"', cls = 'c' + (c.wide ? ' wide' : ''), al = ' aria-label="' + esc(c.l) + '"';
     if (c.t === T) return '<div class="' + cls + '"' + lab + '><input type="text" data-f="' + c.k + '" value="' + esc(v) + '"' + al + dis + '></div>';
     if (c.t === NUM) return '<div class="' + cls + '"' + lab + '><input type="number" inputmode="decimal" step="any" data-f="' + c.k + '" value="' + esc(v) + '"' + al + dis + '></div>';
-    if (c.t === TM) return '<div class="' + cls + '"' + lab + '><div class="tm"><input type="time" data-f="' + c.k + '" value="' + esc(v) + '"' + al + dis + '>' +
+    if (c.t === TM) return '<div class="' + cls + '"' + lab + '><div class="tm"><input type="time" data-f="' + c.k + '" value="' + esc(v) + '"' + (v ? '' : ' data-e="1"') + al + dis + '>' +
       (c.now === false ? '' : '<button type="button" class="btn ghost sm" data-act="now" data-k="' + c.k + '"' + dis + '>Now</button>') + '</div></div>';
     if (c.t === YN) return '<div class="' + cls + '"' + lab + '><select class="yn" data-f="' + c.k + '"' + al + dis + '>' +
       ['', 'Yes', 'No'].map(function (o) { return '<option value="' + o + '"' + (v === o ? ' selected' : '') + '>' + (o || '–') + '</option>'; }).join('') + '</select></div>';
@@ -730,7 +735,7 @@
     def.tables.forEach(function (tb) {
       var rows = rowsOf(st.view, tb.grp), g = gridOf(tb);
       html += '<section class="panel rtable" aria-label="' + esc(tb.title || def.title) + '">' + (tb.title ? '<div class="reg-head"><h2>' + esc(tb.title) + '</h2></div>' : '') +
-        '<div class="rscroll"><div class="rgrid" style="--cols:' + g.cols + ';--minw:' + g.minw + 'px">' +
+        '<div class="rscroll"><div class="rgrid" style="--cols:' + g.cols + ';--pcols:' + g.pcols + ';--minw:' + g.minw + 'px">' +
         '<div class="rcols" aria-hidden="true"><span>Sr.</span>' + tb.cols.map(function (c) { return '<span>' + esc(c.l) + '</span>'; }).join('') + '<span></span></div>' +
         '<div class="rrows" data-grp="' + tb.grp + '">' + (rows.length ? rows.map(function (r, i) { return rRowHTML(r, i, tb); }).join('') :
           '<div class="rrow" style="grid-template-columns:1fr"><div class="empty-note">' + (canEdit() ? 'No rows yet. Tap “Add row” to start.' : 'An editor has not added anything here for this day yet.') + '</div></div>') +
@@ -785,7 +790,10 @@
     var i = rrIndex(id), el = rRowEl(id);
     if (i < 0 || !el) return;
     var r = st.rrows[i], tb = tableOfRow(r);
-    el.querySelectorAll('[data-f]').forEach(function (inp) { if (inp !== document.activeElement) inp.value = r.d[inp.getAttribute('data-f')] || ''; });
+    el.querySelectorAll('[data-f]').forEach(function (inp) {
+      if (inp !== document.activeElement) inp.value = r.d[inp.getAttribute('data-f')] || '';
+      markEmpty(inp);
+    });
     tb.cols.forEach(function (c) {
       if (c.t === SIG) { var cell = el.querySelector('[data-sig="' + c.k + '"]'); if (cell) cell.innerHTML = rSig(r, c.k); }
       else if (c.t === CT || c.t === CK) {
@@ -795,6 +803,8 @@
     });
     updateRStats();
   }
+  /* lets the print stylesheet hide the empty "--:-- --" placeholder of time boxes */
+  function markEmpty(el) { if (el && el.type === 'time') { if (el.value) el.removeAttribute('data-e'); else el.setAttribute('data-e', '1'); } }
   function saveRR(r, key, now) {
     queue('rr', r.id, { d: JSON.parse(JSON.stringify(r.d)) }, now, [key]);
   }
@@ -804,6 +814,7 @@
     var rw = e.target.closest('.rrow'), i = rrIndex(rw && rw.getAttribute('data-id'));
     if (i < 0) return;
     st.rrows[i].d[f] = e.target.value;
+    markEmpty(e.target);
     saveRR(st.rrows[i], f);
     refreshRRDom(st.rrows[i].id);
   });

@@ -3,9 +3,9 @@
    when the network is slow (3 seconds) or missing. Google Fonts are cache-first.
    Calls to the database go straight to the network and are never cached here.
    Bump VERSION when files change. */
-var VERSION = 'docket-v8';
+var VERSION = 'docket-v10';
 var SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'store.js', 'config.js', 'supabase-js.js', 'manifest.webmanifest',
-  'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+  'favicon.svg', 'turmeric-logo.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(VERSION).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); }));
